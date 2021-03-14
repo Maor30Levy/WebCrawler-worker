@@ -12,7 +12,7 @@ const initServer = async () => {
         const { connectMongo } = require('./db/mongoose');
         connectMongo(keys.mongoDB);
         const messagesRouter = require('./routers/messagesRouter');
-        const port = process.env.PORT;
+        const port = keys.port;
         app.use(express.json());
         app.use(cors());
         app.use(messagesRouter);
