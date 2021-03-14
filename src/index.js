@@ -1,15 +1,16 @@
 const express = require('express');
 const cors = require('cors');
-const {getKeys} = require('./keys/keys');
+const { getKeys } = require('./keys/keys');
 let keys;
-const initServer = async ()=>{
-    try{
-        if(process.env.PORT) {
-            await require('./keys/setKeys').setKeys();  
+const initServer = async () => {
+    try {
+        if (process.env.PORT) {
+            await require('./keys/setKeys').setKeys();
         }
         keys = await getKeys();
         const app = express();
-        require('./db/mongoose');
+        const { connectMongo } = require('./db/mongoose');
+        connectMongo(keys.mongoDB);
         const messagesRouter = require('./routers/messagesRouter');
         const port = process.env.PORT;
         app.use(express.json());
@@ -18,13 +19,13 @@ const initServer = async ()=>{
         app.listen(port, () => {
             console.log(`Server is up on port ${port}!`)
         });
-    }catch(err){
+    } catch (err) {
         console.log(err);
     }
-    
+
 };
 
 initServer();
 
-module.exports = {keys};
+module.exports = { keys };
 
