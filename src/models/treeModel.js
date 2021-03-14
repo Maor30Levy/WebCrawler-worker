@@ -21,12 +21,15 @@ const treeSchema = new mongoose.Schema({
         type: Number,
         required: true
     },
-    maxPages:{
+    maxPages: {
         type: Number,
         required: true
     },
-    completed:{
+    completed: {
         type: Boolean
+    },
+    currentLevel: {
+        type: Number
     }
 });
 

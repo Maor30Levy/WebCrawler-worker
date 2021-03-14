@@ -61,6 +61,14 @@ const AWSCreateMessage = async (queueURL, request) => {
       "maxPages": {
         DataType: "Number",
         StringValue: request.maxPages
+      },
+      "nodesInLevel": {
+        DataType: "Number",
+        StringValue: request.nodesInLevel
+      },
+      "currentNodeInLevel": {
+        DataType: "Number",
+        StringValue: request.currentNodeInLevel
       }
     },
     MessageBody: `${request.url}: ${request.id}`,
@@ -165,7 +173,8 @@ const publishNode = async (node, message, isNodeInDB, queueURL, currentLevel) =>
       url: node.url,
       numOfNodes: 1,
       maxLevel: message.maxLevel,
-      maxPages: message.maxPages
+      maxPages: message.maxPages,
+      currentLevel: 2
     });
   } else {
     tree = await Tree.findOne({ title: message.qName });
@@ -174,6 +183,7 @@ const publishNode = async (node, message, isNodeInDB, queueURL, currentLevel) =>
     tree.markModified('root');
     await tree.save();
     tree.numOfNodes++;
+    if (message.nodesInLevel === message.currentNodeInLevel) tree.currentLevel++;
     const availableMessages = (await AWSgetNumOfMessagesInQueue(queueURL)).availableMessages;
     if (
       (tree.numOfNodes === tree.maxPages) ||
@@ -186,6 +196,8 @@ const publishNode = async (node, message, isNodeInDB, queueURL, currentLevel) =>
 
 const handleMessage = async (message, queueURL, numOfPages) => {
   const { level, maxLevel, url, id, maxPages, qName } = message;
+  const tree = await Tree.findOne({ title: qName });
+  if (tree?.currentLevel != parseInt(level)) return false;
   let children = [];
   const node = new Node(url, level, id);
   try {
@@ -216,13 +228,16 @@ const handleMessage = async (message, queueURL, numOfPages) => {
           url: children[i],
           level: `${parseInt(level) + 1}`,
           maxLevel,
-          maxPages
+          maxPages,
+          nodesInLevel: `${children.length}`,
+          currentNodeInLevel: `${i + 1}`
         }
         await createMessage(queueURL, request);
         const workerHost = await getSecret('workerHost');
         axios.post(workerHost, { queueURL });
       }
     }
+    return true;
   } catch (err) {
     console.log(err);
   }
@@ -247,10 +262,8 @@ const worker = async (queueURL) => {
     const { output, receiptHandle } = await getMessage(queueURL);
 
     const dbPages = await getNumOfNodesFromDB(output.qName);
-    await handleMessage(output, queueURL, qMessages + dbPages);
-
-    await deleteMessage(queueURL, receiptHandle);
-
+    if (await handleMessage(output, queueURL, qMessages + dbPages))
+      await deleteMessage(queueURL, receiptHandle);
     await handlePostWork(queueURL, output.qName);
 
   }
