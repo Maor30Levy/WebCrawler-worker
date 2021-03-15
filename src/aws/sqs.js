@@ -4,7 +4,7 @@ const { getSecret } = require('../aws/ssm');
 const Node = require("../utils/node");
 const Tree = require('../models/treeModel');
 const NodeDB = require('../models/nodeModel');
-
+const { workerHost, parserHost } = require('../keys/keys');
 const {
   setChildrenNodes,
   getChildrenURLs,
@@ -174,7 +174,8 @@ const publishNode = async (node, message, isNodeInDB, queueURL, currentLevel) =>
       numOfNodes: 1,
       maxLevel: message.maxLevel,
       maxPages: message.maxPages,
-      currentLevel: 2
+      currentLevel: 2,
+      nodesInLevel: 0
     });
   } else {
     tree = await Tree.findOne({ title: message.qName });
@@ -183,7 +184,10 @@ const publishNode = async (node, message, isNodeInDB, queueURL, currentLevel) =>
     tree.markModified('root');
     await tree.save();
     tree.numOfNodes++;
-    if (message.nodesInLevel === message.currentNodeInLevel) tree.currentLevel++;
+    if (message.nodesInLevel === tree.nodesInLevel) {
+      tree.nodesInLevel = 0;
+      tree.currentLevel++;
+    } else tree.nodesInLevel++;
     const availableMessages = (await AWSgetNumOfMessagesInQueue(queueURL)).availableMessages;
     if (
       (tree.numOfNodes === tree.maxPages) ||
@@ -197,14 +201,17 @@ const publishNode = async (node, message, isNodeInDB, queueURL, currentLevel) =>
 const handleMessage = async (message, queueURL, numOfPages) => {
   const { level, maxLevel, url, id, maxPages, qName } = message;
   const tree = await Tree.findOne({ title: qName });
-  if (tree?.currentLevel != parseInt(level)) return false;
+  if (
+    level !== '1' && tree?.currentLevel != parseInt(level)) {
+    console.log(tree?.currentLevel, level)
+    return false
+  };
   let children = [];
   const node = new Node(url, level, id);
   try {
     const nodeFromDB = await checkURLInDB(url);
     if (!nodeFromDB) {
-      const parserAPI = await getSecret('parserHost');
-      const parseResult = await axios.post(parserAPI, { url });
+      const parseResult = await axios.post(parserHost, { url });
       node.title = parseResult.data.title;
       children = parseResult.data.children;
       node.children = setChildrenNodes(children, level, id);
@@ -233,7 +240,6 @@ const handleMessage = async (message, queueURL, numOfPages) => {
           currentNodeInLevel: `${i + 1}`
         }
         await createMessage(queueURL, request);
-        const workerHost = await getSecret('workerHost');
         axios.post(workerHost, { queueURL });
       }
     }
@@ -249,7 +255,8 @@ const handlePostWork = async (queueURL, queueName) => {
   else {
     const anotherAvailableMessages = (await AWSgetNumOfMessagesInQueue(queueURL)).availableMessages;
     if (anotherAvailableMessages > 0) {
-      const workerHost = await getSecret('workerHost');
+      console.log('here');
+
       axios.post(workerHost, { queueURL });
     }
   }

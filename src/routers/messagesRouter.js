@@ -4,7 +4,6 @@ const router = new express.Router();
 
 router.post('/', async (req, res) => {
     try {
-
         await worker(req.body.queueURL);
         res.send();
     } catch (err) {

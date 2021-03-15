@@ -1,13 +1,12 @@
 const express = require('express');
 const cors = require('cors');
-const { getKeys } = require('./keys/keys');
 let keys;
 const initServer = async () => {
     try {
         if (process.env.PORT) {
             await require('./keys/setKeys').setKeys();
         }
-        keys = await getKeys();
+        keys = require('./keys/keys');
         const app = express();
         const { connectMongo } = require('./db/mongoose');
         connectMongo(keys.mongoDB);
@@ -26,6 +25,4 @@ const initServer = async () => {
 };
 
 initServer();
-
-module.exports = { keys };
 

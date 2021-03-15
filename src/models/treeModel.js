@@ -30,6 +30,9 @@ const treeSchema = new mongoose.Schema({
     },
     currentLevel: {
         type: Number
+    },
+    nodesInLevel: {
+        type: Number
     }
 });
 
