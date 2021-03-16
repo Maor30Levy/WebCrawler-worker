@@ -1,18 +1,4 @@
 const { sqs } = require('./aws-connect');
-const axios = require('axios');
-const { getSecret } = require('../aws/ssm');
-const Node = require("../utils/node");
-const Tree = require('../models/treeModel');
-const NodeDB = require('../models/nodeModel');
-const { workerHost, parserHost } = require('../keys/keys');
-const {
-  setChildrenNodes,
-  getChildrenURLs,
-  setNodeByID,
-  getNumOfNodesFromDB,
-  checkURLInDB
-} = require("../utils/functions");
-
 
 const AWSgetNumOfMessagesInQueue = async (queueURL) => {
   try {
@@ -31,7 +17,8 @@ const AWSgetNumOfMessagesInQueue = async (queueURL) => {
     const nonVisibleMessages = parseInt(attributes.ApproximateNumberOfMessagesNotVisible);
     return { availableMessages, delayedMessages, nonVisibleMessages };
   } catch (err) {
-    console.log(err);
+    console.log('Error fetching the queue');
+    return { availableMessages: 0, delayedMessages: 0, nonVisibleMessages: 0 };
   }
 }
 
@@ -78,7 +65,7 @@ const AWSCreateMessage = async (queueURL, request) => {
   };
   try {
     const data = await sqs.sendMessage(params).promise();
-    console.log("Success", data.MessageId);
+    console.log(`Message ${request.id} added to queue`);
     return messageID = data.MessageId;
   } catch (err) {
     console.log(`Error creating the message: ${err}`);
@@ -94,44 +81,47 @@ const AWSreceiveMessage = async (queueURL) => {
       "url",
       "level",
       "maxLevel",
-      "maxPages",
-      "page"
+      "maxPages"
     ],
-    MaxNumberOfMessages: 1,
+    MaxNumberOfMessages: 10,
     VisibilityTimeout: 60,
     WaitTimeSeconds: 2
   }
   try {
     const data = await sqs.receiveMessage(params).promise();
     if (!data?.Messages) return;
-    const message = data.Messages[0];
-    const attributes = message.MessageAttributes;
-    const output = {};
-    for (let attribute in attributes) {
-      output[attribute] = (attributes[attribute]).StringValue;
+
+    const messagesrArray = [];
+    for (let message of data.Messages) {
+      const attributes = message.MessageAttributes;
+      const output = {};
+      for (let attribute in attributes) {
+        output[attribute] = (attributes[attribute]).StringValue;
+      }
+      console.log(output.id);
+      const receiptHandle = message.ReceiptHandle;
+      messagesrArray.push({ output, receiptHandle });
     }
-    console.log(output.id);
-    const receiptHandle = message.ReceiptHandle;
-    return { output, receiptHandle };
+    return messagesrArray;
   } catch (err) {
     console.log(err);
   }
 };
 
-const AWSDeleteMessage = async (queueURL, receiptHandle) => {
+const AWSDeleteMessage = async (queueURL, receiptHandle, id) => {
   const deleteParams = {
     QueueUrl: queueURL,
     ReceiptHandle: receiptHandle
   }
   try {
     const data = await sqs.deleteMessage(deleteParams).promise();
-    console.log(data);
+    console.log(`Message ${id} deleted`);
   } catch (err) {
     console.log(err);
   }
 };
 
-const deleteQ = async (queueURL) => {
+const AWSDeleteQ = async (queueURL) => {
   const deleteParams = {
     QueueUrl: queueURL
   };
@@ -143,139 +133,10 @@ const deleteQ = async (queueURL) => {
   }
 };
 
-
-
-
-const createMessage = async (queueURL, request) => {
-  return await AWSCreateMessage(queueURL, request);
-};
-
-const getMessage = async (queueURL) => {
-  return await AWSreceiveMessage(queueURL);
-};
-
-const deleteMessage = async (queueURL, receiptHandle) => {
-  await AWSDeleteMessage(queueURL, receiptHandle);
-};
-
-
-const publishNode = async (node, message, isNodeInDB, queueURL, currentLevel) => {
-  let tree;
-  if (!isNodeInDB) {
-    const { title, url, children } = node;
-    const newNode = new NodeDB({ title, url, children });
-    await newNode.save();
-  }
-  if (node.id === '0') {
-    tree = new Tree({
-      root: node,
-      title: message.qName,
-      url: node.url,
-      numOfNodes: 1,
-      maxLevel: message.maxLevel,
-      maxPages: message.maxPages,
-      currentLevel: 2,
-      nodesInLevel: 0
-    });
-  } else {
-    tree = await Tree.findOne({ title: message.qName });
-    const root = setNodeByID(node.id, node, tree.root);
-    tree.root = root;
-    tree.markModified('root');
-    await tree.save();
-    tree.numOfNodes++;
-    if (message.nodesInLevel === tree.nodesInLevel) {
-      tree.nodesInLevel = 0;
-      tree.currentLevel++;
-    } else tree.nodesInLevel++;
-    const availableMessages = (await AWSgetNumOfMessagesInQueue(queueURL)).availableMessages;
-    if (
-      (tree.numOfNodes === tree.maxPages) ||
-      (availableMessages === 0 && currentLevel === tree.maxLevel)
-    ) tree.completed = true;
-  }
-  await tree.save();
-  return;
-};
-
-const handleMessage = async (message, queueURL, numOfPages) => {
-  const { level, maxLevel, url, id, maxPages, qName } = message;
-  const tree = await Tree.findOne({ title: qName });
-  if (
-    level !== '1' && tree?.currentLevel != parseInt(level)) {
-    console.log(tree?.currentLevel, level)
-    return false
-  };
-  let children = [];
-  const node = new Node(url, level, id);
-  try {
-    const nodeFromDB = await checkURLInDB(url);
-    if (!nodeFromDB) {
-      const parseResult = await axios.post(parserHost, { url });
-      node.title = parseResult.data.title;
-      children = parseResult.data.children;
-      node.children = setChildrenNodes(children, level, id);
-      await publishNode(node, message, false, queueURL, parseInt(level));
-    } else {
-      node.title = nodeFromDB.title;
-      node.children = nodeFromDB.children;
-      await publishNode(node, message, true, queueURL, parseInt(level));
-      children = getChildrenURLs(nodeFromDB.children);
-    }
-    let pagesGap = parseInt(maxPages) - numOfPages;
-    const levelGap = parseInt(maxLevel) - parseInt(level);
-    if (levelGap > 0) {
-      for (let i = 0;
-        pagesGap > 0 && i < children.length;
-        i++, pagesGap--) {
-        const footer = i > 9 ? `/${i}/` : i;
-        const request = {
-          qName,
-          id: id + footer,
-          url: children[i],
-          level: `${parseInt(level) + 1}`,
-          maxLevel,
-          maxPages,
-          nodesInLevel: `${children.length}`,
-          currentNodeInLevel: `${i + 1}`
-        }
-        await createMessage(queueURL, request);
-        axios.post(workerHost, { queueURL });
-      }
-    }
-    return true;
-  } catch (err) {
-    console.log(err);
-  }
-};
-
-const handlePostWork = async (queueURL, queueName) => {
-  const tree = await Tree.findOne({ title: queueName });
-  if (tree.completed) deleteQ(queueURL);
-  else {
-    const anotherAvailableMessages = (await AWSgetNumOfMessagesInQueue(queueURL)).availableMessages;
-    if (anotherAvailableMessages > 0) {
-      console.log('here');
-
-      axios.post(workerHost, { queueURL });
-    }
-  }
-}
-
-const worker = async (queueURL) => {
-  const { availableMessages, delayedMessages, nonVisibleMessages } = await AWSgetNumOfMessagesInQueue(queueURL);
-  const qMessages = availableMessages + delayedMessages + nonVisibleMessages;
-  if (qMessages) {
-    const { output, receiptHandle } = await getMessage(queueURL);
-
-    const dbPages = await getNumOfNodesFromDB(output.qName);
-    if (await handleMessage(output, queueURL, qMessages + dbPages))
-      await deleteMessage(queueURL, receiptHandle);
-    await handlePostWork(queueURL, output.qName);
-
-  }
-};
-
 module.exports = {
-  worker
+  AWSgetNumOfMessagesInQueue,
+  AWSCreateMessage,
+  AWSreceiveMessage,
+  AWSDeleteMessage,
+  AWSDeleteQ
 };
