@@ -4,30 +4,13 @@ const keys = require('../keys/keys');
 const { setChildrenNodes, getChildrenURLs } = require("../utils/functions");
 const { createNewTree, updateTree, getTree, getNumOfNodesFromDB } = require('./tree-services');
 const {
-    AWSgetNumOfMessagesInQueue,
-    AWSCreateMessage,
-    AWSreceiveMessage,
-    AWSDeleteMessage,
-    AWSDeleteQ
-} = require('../aws/sqs');
+    getNumOfMessages,
+    createMessage,
+    getMessage,
+    deleteMessage,
+    deleteQueue
+} = require('./queue-and-message-services')
 const { checkURLInDB, createNewNode } = require('./node-sevices');
-
-const getNumOfMessages = async (queueURL) => {
-    return await AWSgetNumOfMessagesInQueue(queueURL);
-}
-
-const createMessage = async (queueURL, request) => {
-    return await AWSCreateMessage(queueURL, request);
-};
-
-const getMessage = async (queueURL) => {
-    return await AWSreceiveMessage(queueURL);
-};
-
-const deleteMessage = async (queueURL, receiptHandle, id) => {
-    await AWSDeleteMessage(queueURL, receiptHandle, id);
-};
-
 
 
 const publishNode = async (node, message, isNodeInDB, queueURL, currentLevel) => {
@@ -86,7 +69,7 @@ const handleMessage = async (message, queueURL, numOfPages) => {
 const handlePostWork = async (queueURL, queueName) => {
     try {
         const tree = getTree(queueName);
-        if (tree.completed) AWSDeleteQ(queueURL);
+        if (tree.completed) deleteQueue(queueURL);
         else {
             const anotherAvailableMessages = (await getNumOfMessages(queueURL)).availableMessages;
             if (anotherAvailableMessages > 0) axios.post(keys.workerHost, { queueURL });
@@ -119,7 +102,4 @@ const processMessages = async (queueURL) => {
 
 };
 
-module.exports = {
-    processMessages,
-    getNumOfMessages
-};
+module.exports = { processMessages };
