@@ -1,6 +1,4 @@
 const Node = require("./node");
-const Tree = require('../models/treeModel');
-const NodeDB = require('../models/nodeModel');
 
 const setChildrenNodes = (childrenURLsArray, level, parentID) => {
     const nodesArray = [];
@@ -46,22 +44,11 @@ const markersHandler = (id) => {
     }
 };
 
-const getNumOfNodesFromDB = async (queueName) => {
-    let dbPages = 0;
-    const tree = await Tree.findOne({ title: queueName });
-    if (tree) dbPages = tree.numOfNodes;
-    return dbPages;
-};
 
-const checkURLInDB = async (url) => {
-    const node = await NodeDB.findOne({ url });
-    return node;
-};
+
 
 module.exports = {
     setChildrenNodes,
     getChildrenURLs,
-    setNodeByID,
-    getNumOfNodesFromDB,
-    checkURLInDB
+    setNodeByID
 };

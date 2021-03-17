@@ -10,6 +10,10 @@ const initServer = async () => {
         const app = express();
         const { connectMongo } = require('./db/mongoose');
         connectMongo(keys.mongoDB);
+        const redisClient = require('./redis/redis-connect');
+        redisClient.on("ready", function () {
+            console.log('Redis client connected');
+        });
         const messagesRouter = require('./routers/messagesRouter');
         const port = keys.port;
         app.use(express.json());

@@ -84,8 +84,8 @@ const AWSreceiveMessage = async (queueURL) => {
       "maxPages"
     ],
     MaxNumberOfMessages: 10,
-    VisibilityTimeout: 60,
-    WaitTimeSeconds: 2
+    VisibilityTimeout: 600,
+    WaitTimeSeconds: 5
   }
   try {
     const data = await sqs.receiveMessage(params).promise();
