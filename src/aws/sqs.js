@@ -48,14 +48,6 @@ const AWSCreateMessage = async (queueURL, request) => {
       "maxPages": {
         DataType: "Number",
         StringValue: request.maxPages
-      },
-      "nodesInLevel": {
-        DataType: "Number",
-        StringValue: request.nodesInLevel
-      },
-      "currentNodeInLevel": {
-        DataType: "Number",
-        StringValue: request.currentNodeInLevel
       }
     },
     MessageBody: `${request.url}: ${request.id}`,
@@ -84,7 +76,7 @@ const AWSreceiveMessage = async (queueURL) => {
       "maxPages"
     ],
     MaxNumberOfMessages: 10,
-    VisibilityTimeout: 600,
+    VisibilityTimeout: 300,
     WaitTimeSeconds: 5
   }
   try {

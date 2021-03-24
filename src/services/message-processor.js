@@ -7,58 +7,54 @@ const {
     getNumOfMessages,
     createMessage,
     getMessage,
-    deleteMessage,
-    deleteQueue
+    deleteMessage
 } = require('./queue-and-message-services')
 const { checkURLInDB, createNewNode } = require('./node-sevices');
 
 
-const publishNode = async (node, message, isNodeInDB, queueURL, currentLevel) => {
-    let tree;
+const publishNode = async (node, message, isNodeInDB, currentLevel) => {
     if (!isNodeInDB) await createNewNode(node);
     if (node.id === '0') {
         await createNewTree(node, message.qName, node.url, message.maxLevel, message.maxPages);
-    } else await updateTree(node, message, queueURL, currentLevel);
+    } else await updateTree(node, message, currentLevel);
 };
 
 const handleMessage = async (message, queueURL, numOfPages) => {
-    const { level, maxLevel, url, id, maxPages, qName } = message;
+    const { maxLevel, url, id, maxPages, qName } = message;
+    const level = parseInt(message.level);
     try {
         let children = [];
         const node = new Node(url, level, id);
         const nodeFromDB = await checkURLInDB(url);
         if (!nodeFromDB) {
-            const parseResult = await axios.post(keys.parserHost, { url });
-            node.title = parseResult.data.title;
-            children = parseResult.data.children;
-            node.children = setChildrenNodes(children, level, id);
-            await publishNode(node, message, false, queueURL, parseInt(level));
+            const parsedResult = await axios.post(keys.parserHost, { url });
+            node.title = parsedResult.data.title;
+            children = parsedResult.data.children;
+            node.children = setChildrenNodes(children, level + 1, id);
+            await publishNode(node, message, false, level);
         } else {
             node.title = nodeFromDB.title;
-            node.children = nodeFromDB.children;
-            await publishNode(node, message, true, queueURL, parseInt(level));
             children = getChildrenURLs(nodeFromDB.children);
+            node.children = setChildrenNodes(children, level + 1, id);
+            await publishNode(node, message, true, level);
+
         }
         let pagesGap = parseInt(maxPages) - numOfPages;
-        const levelGap = parseInt(maxLevel) - parseInt(level);
-        if (levelGap > 0) {
-            for (let i = 0;
-                pagesGap > 0 && i < children.length;
-                i++, pagesGap--) {
-                const footer = i > 9 ? `/${i}/` : i;
-                const request = {
-                    qName,
-                    id: id + footer,
-                    url: children[i],
-                    level: `${parseInt(level) + 1}`,
-                    maxLevel,
-                    maxPages,
-                    nodesInLevel: `${children.length}`,
-                    currentNodeInLevel: `${i + 1}`
-                }
-                await createMessage(queueURL, request);
-                axios.post(keys.workerHost, { queueURL });
+        const levelGap = parseInt(maxLevel) - level;
+        for (let i = 0;
+            levelGap > 0 && pagesGap > 0 && i < children.length;
+            i++, pagesGap--) {
+            const footer = i > 9 ? `/${i}/` : i;
+            const request = {
+                qName,
+                id: id + footer,
+                url: children[i],
+                level: `${level + 1}`,
+                maxLevel,
+                maxPages
             }
+            await createMessage(queueURL, request);
+            axios.post(keys.workerHost, { queueURL });
         }
         return true;
     } catch (err) {
@@ -69,8 +65,7 @@ const handleMessage = async (message, queueURL, numOfPages) => {
 const handlePostWork = async (queueURL, queueName) => {
     try {
         const tree = getTree(queueName);
-        if (tree.completed) deleteQueue(queueURL);
-        else {
+        if (!tree.completed) {
             const anotherAvailableMessages = (await getNumOfMessages(queueURL)).availableMessages;
             if (anotherAvailableMessages > 0) axios.post(keys.workerHost, { queueURL });
         }
@@ -81,15 +76,17 @@ const handlePostWork = async (queueURL, queueName) => {
 
 const processMessages = async (queueURL) => {
     try {
-        const { availableMessages, delayedMessages, nonVisibleMessages } = await getNumOfMessages(queueURL);
-        const qMessages = availableMessages + delayedMessages + nonVisibleMessages;
+        const { availableMessages } = await getNumOfMessages(queueURL);
+
         if (availableMessages > 0) {
             const messages = await getMessage(queueURL);
             if (messages) {
                 const queueName = messages[0].output.qName;
                 for (let message of messages) {
                     const { output, receiptHandle } = message;
-                    const dbPages = await getNumOfNodesFromDB(output.qName);
+                    const { availableMessages, delayedMessages, nonVisibleMessages } = await getNumOfMessages(queueURL);
+                    const qMessages = availableMessages + delayedMessages + nonVisibleMessages;
+                    const dbPages = output.id === '0' ? 0 : await getNumOfNodesFromDB(output.qName);
                     if (await handleMessage(output, queueURL, qMessages + dbPages))
                         await deleteMessage(queueURL, receiptHandle, output.id);
                 }

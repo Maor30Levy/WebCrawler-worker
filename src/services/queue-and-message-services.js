@@ -23,16 +23,12 @@ const deleteMessage = async (queueURL, receiptHandle, id) => {
     await AWSDeleteMessage(queueURL, receiptHandle, id);
 };
 
-const deleteQueue = async (queueURL) => {
-    await AWSDeleteQ(queueURL);
-};
 
 module.exports = {
     getNumOfMessages,
     createMessage,
     getMessage,
-    deleteMessage,
-    deleteQueue
+    deleteMessage
 }
 
 
