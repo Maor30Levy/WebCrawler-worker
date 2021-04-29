@@ -3,7 +3,6 @@ const {
     AWSCreateMessage,
     AWSreceiveMessage,
     AWSDeleteMessage,
-    AWSDeleteQ
 } = require('../aws/sqs');
 
 
