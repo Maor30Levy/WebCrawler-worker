@@ -1,6 +1,6 @@
 const axios = require('axios');
 const Node = require("../utils/node");
-const keys = require('../keys/keys');
+const { keys } = require('../keys/keys');
 const { setChildrenNodes, getChildrenURLs } = require("../utils/functions");
 const { createNewTree, updateTree, getTree, getNumOfNodesFromDB } = require('./tree-services');
 const {

@@ -1,6 +1,6 @@
 const redis = require("redis");
 const bluebird = require("bluebird");
-const keys = require('../keys/keys');
+const { keys } = require('../keys/keys');
 bluebird.promisifyAll(redis);
 
 const host = keys.redisHost;
