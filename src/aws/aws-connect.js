@@ -1,7 +1,11 @@
 //Connecting to AWS 
 const AWS = require('aws-sdk');
-AWS.config.update({ region: 'us-east-2' });
-
+const SESConfig = { region: 'us-east-2' };
+if (process.env.AWS_ACCESS_KEY_ID) {
+    SESConfig.accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+    SESConfig.accessSecretKey = process.env.AWS_SECRET_ACCESS_KEY;
+}
+AWS.config.update(SESConfig);
 //Creating AWS services
 const s3 = new AWS.S3({ apiVersion: '2006-03-01' });
 const sqs = new AWS.SQS({ apiVersion: '2012-11-05' });
