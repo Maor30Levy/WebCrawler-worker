@@ -11,7 +11,8 @@ const {
 } = require('./queue-and-message-services')
 const { checkURLInDB, createNewNode } = require('./node-sevices');
 
-
+const workerURL = `http://${keys.workerHost}:${keys.workerPort}`
+const parserURL = `http://${keys.parserHost}:${keys.parserPort}`
 const publishNode = async (node, message, isNodeInDB, currentLevel) => {
     if (!isNodeInDB) await createNewNode(node);
     if (node.id === '0') {
@@ -27,7 +28,7 @@ const handleMessage = async (message, queueURL, numOfPages) => {
         const node = new Node(url, level, id);
         const nodeFromDB = await checkURLInDB(url);
         if (!nodeFromDB) {
-            const parsedResult = await axios.post(keys.parserHost, { url });
+            const parsedResult = await axios.post(parserURL, { url });
             node.title = parsedResult.data.title;
             children = parsedResult.data.children;
             node.children = setChildrenNodes(children, level + 1, id);
@@ -54,7 +55,7 @@ const handleMessage = async (message, queueURL, numOfPages) => {
                 maxPages
             }
             await createMessage(queueURL, request);
-            axios.post(keys.workerHost, { queueURL });
+            axios.post(workerURL, { queueURL });
         }
         return true;
     } catch (err) {
@@ -67,7 +68,7 @@ const handlePostWork = async (queueURL, queueName) => {
         const tree = getTree(queueName);
         if (!tree.completed) {
             const anotherAvailableMessages = (await getNumOfMessages(queueURL)).availableMessages;
-            if (anotherAvailableMessages > 0) axios.post(keys.workerHost, { queueURL });
+            if (anotherAvailableMessages > 0) axios.post(workerURL, { queueURL });
         }
     } catch (err) {
         console.log(err)

@@ -3,9 +3,9 @@ const { processMessages } = require('../services/message-processor');
 const worker = async (req, res) => {
     try {
         await processMessages(req.body.queueURL);
-        res.send();
+        return res.send();
     } catch (err) {
-        res.status(500);
+        return res.status(500);
     }
 };
 
